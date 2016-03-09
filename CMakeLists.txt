@@ -41,6 +41,11 @@ OPTION( USE_SSH				"Link with libssh to enable SSH support" ON )
 OPTION( USE_GSSAPI			"Link with libgssapi for SPNEGO auth"   OFF )
 OPTION( VALGRIND			"Configure build for valgrind"			OFF )
 OPTION( CURL			"User curl for HTTP if available" ON)
+OPTION( DEBUG_POOL			"Enable debug pool allocator"			OFF )
+
+IF(DEBUG_POOL)
+	ADD_DEFINITIONS(-DGIT_DEBUG_POOL)
+ENDIF()
 
 IF(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
 	SET( USE_ICONV ON )
@@ -86,17 +91,21 @@ IF (NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
 	OPTION( USE_OPENSSL                     "Link with and use openssl library"             ON )
 ENDIF()
 
-CHECK_STRUCT_HAS_MEMBER ("struct stat" st_atim "sys/types.h;sys/stat.h"
-	HAVE_STRUCT_STAT_ST_ATIM LANGUAGE C)
-CHECK_STRUCT_HAS_MEMBER ("struct stat" st_atimespec "sys/types.h;sys/stat.h"
-	HAVE_STRUCT_STAT_ST_ATIMESPEC LANGUAGE C)
+CHECK_STRUCT_HAS_MEMBER ("struct stat" st_mtim "sys/types.h;sys/stat.h"
+	HAVE_STRUCT_STAT_ST_MTIM LANGUAGE C)
+CHECK_STRUCT_HAS_MEMBER ("struct stat" st_mtimespec "sys/types.h;sys/stat.h"
+	HAVE_STRUCT_STAT_ST_MTIMESPEC LANGUAGE C)
+CHECK_STRUCT_HAS_MEMBER("struct stat" st_mtime_nsec sys/stat.h
+	HAVE_STRUCT_STAT_MTIME_NSEC LANGUAGE C)
 
-IF (HAVE_STRUCT_STAT_ST_ATIM)
+IF (HAVE_STRUCT_STAT_ST_MTIM)
 	CHECK_STRUCT_HAS_MEMBER("struct stat" st_mtim.tv_nsec sys/stat.h
 		HAVE_STRUCT_STAT_NSEC LANGUAGE C)
-ELSEIF (HAVE_STRUCT_STAT_ST_ATIMESPEC)
+ELSEIF (HAVE_STRUCT_STAT_ST_MTIMESPEC)
 	CHECK_STRUCT_HAS_MEMBER("struct stat" st_mtimespec.tv_nsec sys/stat.h
 		HAVE_STRUCT_STAT_NSEC LANGUAGE C)
+ELSE ()
+	SET( HAVE_STRUCT_STAT_NSEC ON )
 ENDIF()
 
 IF (HAVE_STRUCT_STAT_NSEC OR WIN32)
@@ -539,8 +548,12 @@ IF (USE_NSEC)
 	ADD_DEFINITIONS(-DGIT_USE_NSEC)
 ENDIF()
 
-IF (HAVE_STRUCT_STAT_ST_ATIMESPEC)
-	ADD_DEFINITIONS(-DGIT_USE_STAT_ATIMESPEC)
+IF (HAVE_STRUCT_STAT_ST_MTIM)
+	ADD_DEFINITIONS(-DGIT_USE_STAT_MTIM)
+ELSEIF (HAVE_STRUCT_STAT_ST_MTIMESPEC)
+	ADD_DEFINITIONS(-DGIT_USE_STAT_MTIMESPEC)
+ELSEIF (HAVE_STRUCT_STAT_ST_MTIME_NSEC)
+	ADD_DEFINITIONS(-DGIT_USE_STAT_MTIME_NSEC)
 ENDIF()
 
 ADD_DEFINITIONS(-D_FILE_OFFSET_BITS=64)
@@ -669,6 +682,10 @@ IF (BUILD_CLAR)
 	ELSE ()
 		ADD_TEST(libgit2_clar libgit2_clar -v)
 	ENDIF ()
+
+	# Add a test target which runs the cred callback tests, to be
+	# called after setting the url and user
+	ADD_TEST(libgit2_clar-cred_callback libgit2_clar -v -sonline::clone::cred_callback)
 ENDIF ()
 
 IF (TAGS)
